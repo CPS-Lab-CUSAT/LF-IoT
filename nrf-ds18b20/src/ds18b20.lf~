@@ -1,0 +1,25 @@
+target C {
+platform: {
+	 name:Zephyr,
+	files:["sensor_main.h", "sensor_main.c"]
+	}
+}
+
+main reactor{
+
+preamble{=
+
+#include "sensor_main.h"
+
+=}
+
+
+reaction(startup){=
+
+sensor_main();
+
+=}
+
+
+}
+
