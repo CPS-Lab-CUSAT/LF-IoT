@@ -1,0 +1,208 @@
+target C {
+  keepalive: true  // Do not exit when event queue is empty.
+}
+
+preamble {=
+  #include "platform.h" // Defines lf_sleep() and thread functions.
+  
+=}
+
+main reactor {
+  preamble {=
+    
+    
+    #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+void *action_a;
+
+#define errExit(msg)    \
+  do {                  \
+    perror(msg);        \
+    exit(EXIT_FAILURE); \
+  } while (0)
+
+static void sigintHandler(int sig) {
+  write(STDERR_FILENO, "Caught SIGINT!\n", 15);
+  lf_schedule(action_a, 0);
+}
+
+
+void * external_main(void* a) {
+  if (signal(SIGINT, sigintHandler) == SIG_ERR) errExit("signal SIGINT");
+action_a=a;
+  while (1) {
+    fprintf(stderr, "%d", 0);
+    sleep(3);
+  }
+
+  exit(EXIT_SUCCESS);
+}
+    
+    
+    
+    // Schedule an event roughly every 200 msec.
+    void* external(void* a) {
+      while (true) {
+        lf_sleep(MSEC(200));
+        lf_schedule(a, 0);
+      }
+    }
+  =}
+  
+  
+  state LF_structure:char[];
+    state timer_details:char[];
+    state remaining_charge:int;
+    state resume_policy:char[];
+  
+  state thread_id: lf_thread_t = 0
+  physical action a(100 msec): int
+
+  reaction(startup) -> a {=
+    
+     /*
+         * read resume file
+         * if it is blank, populate it with current physical and logical time
+         * add LF program structure
+         * add timer details if any
+         * add power constraints(remaining charge)
+         * resume policy ( history/reset)
+         */
+         
+     self->LF_structure="EPL";
+    self->timer_details="5s";
+    self->remaining_charge=90;
+    self->resume_policy="H";
+       
+      char* file_path ="./resume.conf";
+      char * line = NULL;
+      size_t len = 0;
+      ssize_t read;
+      int cntr=0;
+      
+  
+      FILE* file = fopen(file_path, "rb");
+      if (file == NULL) lf_print_error_and_exit("Error opening RESUME file at path %s.", file_path);
+  
+      // Determine the file size
+      fseek(file, 0, SEEK_END);
+      long file_size = ftell(file);
+      fseek(file, 0, SEEK_SET);
+      
+      if(file_size==0)     
+        printf("Resume file empty - first run/ file corrupt");
+      else
+      {
+        /* read file */
+          
+          
+          
+      
+          while ((read = getline(&line, &len, file)) != -1) {
+              ++cntr;
+              printf("Retrieved line of length %zu:\n", read);
+              printf("%s", line);
+              switch(cntr){
+                case 1:
+                  self->LF_structure=(char *)malloc(sizeof(read)+1);
+                  strcpy(self->LF_structure,line);
+                  break;
+                
+                case 2:
+                  self->timer_details=(char *)malloc(sizeof(read)+1);
+                  strcpy(self->timer_details,line);
+                  break;
+                  
+                case 3:
+                //remaining_charge=(char *)malloc(sizeof(read)+1);
+                self->remaining_charge=atoi(line);
+                  break;
+                  
+                case 4:
+                self->resume_policy=(char *)malloc(sizeof(read)+1);
+                strcpy(self->resume_policy,line);
+                  break;
+                  
+                default:
+                  printf("Not valid line");
+                  break;
+                
+            }
+              
+          }   
+      }
+  
+      if (line)
+        free(line);
+      
+      fclose(file);
+      
+      /*
+       * Start a thread
+       * 
+       * 
+       */
+    
+    
+    // Start a thread to schedule physical actions.
+    lf_thread_create(&self->thread_id, &external_main, a);
+  =}
+
+  reaction(a) {=
+    interval_t elapsed_time = lf_time_logical_elapsed();
+    printf("Action triggered at logical time %lld nsec after start.\n", elapsed_time);
+    lf_request_stop();
+  =}
+  
+  reaction(shutdown){=
+    char* file_path ="./resume.conf";
+      char * line = NULL;
+      size_t len = 0;
+      ssize_t read;
+      int cntr=0;
+      char charge[10];
+  
+      
+    self->LF_structure="EPL";
+    self->timer_details="5s";
+    self->remaining_charge=90;
+    self->resume_policy="H";
+    lf_print("Shutdown triggered by Ctrl-C");
+    lf_print("Write state to file");
+    
+    FILE* file = fopen(file_path, "w");
+    
+      if (file == NULL) lf_print_error_and_exit("Error opening RESUME file at path %s.", file_path);
+  
+  
+      lf_print("File opened");
+      // Determine the file size
+      fseek(file, 0, SEEK_END);
+      long file_size = ftell(file);
+      fseek(file, 0, SEEK_SET);
+      
+      lf_print("File writing starts");
+      
+      fputs(self->LF_structure,file);
+      fputs("\n",file);
+      fputs(self->timer_details,file);
+      fputs("\n",file);
+      
+      lf_print("File timer and structure details written");
+      
+      snprintf( charge, 5, "%d", self->remaining_charge );
+      fputs(charge,file);
+      fputs("\n",file);
+      
+      lf_print("File charge written");
+      fputs(self->resume_policy,file);
+      lf_print("File policy details written");
+      lf_print("File closed");
+      fclose(file);
+    
+  =}
+  
+}
